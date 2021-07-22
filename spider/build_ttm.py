@@ -1,12 +1,12 @@
 import json
 
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
 from datetime import datetime as dt
 
 
 def build_ttm(key_cvm):
     # Load DB:
-    data_db = cursor().find({'key_cvm': key_cvm})
+    data_db = cursor_stock().find({'key_cvm': key_cvm})
 
     # Unpack DATA & Create List:
     for stock in data_db:
@@ -30,6 +30,7 @@ def build_ttm(key_cvm):
             'result_date': None,
             'pat_liq': None,
             'receita_liq': None,
+            'resultado_brt': None,
             'ebit': None,
             'depreciacao_amortizao': None,
             'res_fin': None,
@@ -76,7 +77,7 @@ def build_ttm(key_cvm):
 
             # Save @ DB:
             # print(json.dumps(raw_ttm, indent=4))
-            cursor().update_one(
+            cursor_stock().update_one(
                 {'key_cvm': key_cvm},
                 {'$set': {f'results.{_year_ttm}.ttm.{formated_ttm}': raw_ttm}}
             )

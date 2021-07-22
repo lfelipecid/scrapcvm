@@ -1,8 +1,11 @@
 import scrapy
 from datetime import datetime as dt
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
 from slugify import slugify
 import json
+import yfinance as yf
+from pathlib import Path
+from urllib.request import urlopen, Request
 
 
 class HeaderStock(scrapy.Spider):
@@ -23,19 +26,11 @@ class HeaderStock(scrapy.Spider):
     dt_now = dt.now().strftime('%d/%m/%Y %H:%M')
     ts_now = dt.timestamp(dt.strptime(dt.now().strftime('%d/%m/%Y %H:%M'), '%d/%m/%Y %H:%M'))
 
-    # Create or Update
-    status_key = ''
-
+    # ALPHA
     alphabet = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U',
                 'V', 'W', 'X', 'Y', 'Z']
 
     def start_requests(self):
-
-        # Load DB:
-        raw_db = cursor().find({})
-        data_db = []
-        for _data in raw_db:
-            data_db.append(_data)
 
         # Parse the start URL
         for letter in self.alphabet:
@@ -46,7 +41,6 @@ class HeaderStock(scrapy.Spider):
                 meta={
                     'download_timeout': 2,
                     'max_retry_times': 10,
-                    'data_db': data_db,
                 }
             )
 
@@ -54,9 +48,6 @@ class HeaderStock(scrapy.Spider):
             break
 
     def parse_stocks(self, res):
-        # Get data from above
-        data_db = res.meta.get('data_db')
-
         # Geting links
         stocks_url = res.xpath(
             '//tr[contains(@class, "SiteBmfBovespa")]//a/@href').getall()
@@ -70,40 +61,25 @@ class HeaderStock(scrapy.Spider):
                 key_cvm_list.append(key_cvm)
             clean_key = key_cvm
 
-        # Parse over KEY_CVM and DB:
+        # Check if exist
         for _key_cvm in key_cvm_list:
-            print(f'\n\nKEY CVM = {_key_cvm}')
 
-            # If not exist Table
-            if len(data_db) == 0:
-                self.status_key = 'create'
+            key_check = True if cursor_stock().find_one({'key_cvm': _key_cvm}) else False
+            key_check = False
+            # IF FALSE CREATE DATA!
+            if not key_check:
+                print(f'\n\nCREATE: KEY CVM | {_key_cvm}\n\n ')
 
-            # If Exist:
-            for _data_db in data_db:
-                _key_bd = _data_db.get('key_cvm')
-                _last_update_db = _data_db.get('last_update')
-
-                # TODO: Logic based on TS
-                if _key_bd == _key_cvm:
-                    self.status_key = 'updated'
-                    break
-                else:
-                    self.status_key = 'create'
-
-            if self.status_key == 'create':
-                print(f'\tData dont exist')
                 yield res.follow(
                     url=self.principal_url + _key_cvm + '&idioma=pt-br',
                     callback=self.parse_iframe,
                     meta={'download_timeout': 2, 'max_retry_times': 10}
                 )
+            else:
+                print(f'\n\nKEY CVM = {_key_cvm} : Arealdy Exit \n\n ')
 
-            elif self.status_key == 'updated':
-                print(f'\tData arealdy created!')
-
-            print('-=' * 45)
-            # TODO Break on First Stock
-            break
+            # # TODO Break on First Stock
+            # break
 
     def parse_iframe(self, res):
         # Gathering data
@@ -140,13 +116,14 @@ class HeaderStock(scrapy.Spider):
             '//td[contains(text(), "Atividade Principal:")]/following-sibling::td/text()').get()
         class_stock = res.xpath(
             '//td[contains(text(), "Classificação Setorial:")]/following-sibling::td/text()').get()
-        site_stock = res.xpath('//a[contains(@target, "_blank")]/@href').get()
 
-        if site_stock == None:
-            site_stock = 'N/A'
+        site_ri = res.xpath('//a[contains(@target, "_blank")]/@href').get()
+        site_b3 = self.principal_url + key_cvm + '&idioma=pt-br'
+
+        if site_ri == None:
+            site_ri = 'N/A'
 
         header_data = {
-            'id': int(key_cvm),
             'slug': slugify(code_stock),
             'key_cvm': key_cvm,
             'razao_social': razao_social,
@@ -155,7 +132,8 @@ class HeaderStock(scrapy.Spider):
             'cnpj_stock': cnpj_stock,
             'atvd_stock': atvd_stock,
             'class_stock': class_stock,
-            'site_stock': site_stock,
+            'site_ri': site_ri,
+            'site_b3': site_b3,
         }
 
         yield res.follow(
@@ -175,49 +153,49 @@ class HeaderStock(scrapy.Spider):
         # Gathering new data
         segmento = res.xpath(
             '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblSegmentoValor")]/text()').get()
-        lote = res.xpath(
-            '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblLoteNegociacaoValor")]/text()').get()
-        capital_social = res.xpath(
-            '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblCapitalSocialValor")]/text()').get()
         total_acoes = res.xpath(
             '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblTotalAcoesValor")]/text()').get()
-        acoes_ordinarias = res.xpath(
-            '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblQtdeAcoesOrdinariasValor")]/text()').get()
-        escriturador = str(res.xpath(
-            '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblFormaAcaoOrdValor")]/text()').get()).replace(
-            'Escritural - ', '')
-        acoes_preferencias = res.xpath(
-            '//span[contains(@id, "ctl00_contentPlaceHolderConteudo_lblQtdeAcoesPreferenciaisValor")]/text()').get()
+
+        # Load DATA from YFINANCE
+        ticker = header_data.get('code_stock')
+        stock = yf.Ticker(f'{ticker}.SA')
+        stock = stock.info
+
+        site_stock = stock.get('website')
+        logo_url = stock.get('logo_url')
+
+        # Create PATH for LOGO
+        path = Path(f'/home/felipecid/documents/inside_market/django_im/media/stocks/{ticker}.png')
+        url_path = f'stocks/{ticker}.png'
+        path.parent.mkdir(parents=True, exist_ok=True)
 
         # Upate dict
         header_data.update({
+            'site_stock': site_stock,
             'segmento': segmento,
-            'lote': lote,
-            'capital_social': capital_social,
             'total_acoes': total_acoes,
-            'acoes_ordi': acoes_ordinarias,
-            'acoes_pref': acoes_preferencias,
-            'escriturador': escriturador,
+            'logo_url': url_path,
             'last_update': self.dt_now,
+            'views': 0,
         })
 
         # Validate data
         check_data = True
         for check in header_data.values():
-            if 'None' == check:
+            if None == check:
                 check_data = False
 
         # Save DATA @ DB:
         if check_data:
-            # Get Key
-            key_cvm = header_data.get('key_cvm')
-            nome_pregao = header_data.get('nome_pregao')
-
-            # UPDATED DATA
-            if self.status_key == 'outdated':
-                print(f'\n\nTEM ITEMS PARA UPDATED = {json.dumps(header_data, indent=5)}')
-
             # CREATE DATA
-            elif self.status_key == 'create':
-                print(f'\n\nNEW DATA = {json.dumps(header_data, indent=5)}')
-                cursor().insert_one(header_data)
+
+            print(f'\n\nNEW DATA = {json.dumps(header_data, indent=5)}\n\n')
+            cursor_stock().insert_one(header_data)
+
+            # Save LOGO
+            with open(path, 'wb') as local:
+                req = Request(url=logo_url, headers=self.headers)
+                with urlopen(req) as response:
+                    local.write(response.read())
+        else:
+            print(f'ERROR on Gathering DATA')

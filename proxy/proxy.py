@@ -2,7 +2,7 @@ from browsermobproxy import Server
 
 
 class ProxyManager:
-    __BMP = r'/home/felipecid/Documents/browsermob-proxy-2.1.4/bin/browsermob-proxy'
+    __BMP = r'/home/felipecid/documents/browsermob-proxy-2.1.4/bin/browsermob-proxy'
 
     def __init__(self):
         self.__server = Server(ProxyManager.__BMP)

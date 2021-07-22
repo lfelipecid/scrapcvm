@@ -1,4 +1,4 @@
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
 from datetime import datetime as dt
 import requests
 from lxml import html
@@ -6,7 +6,7 @@ import json
 
 
 def build_indicadres(key_cvm):
-    data_db = cursor().find({'key_cvm': key_cvm})
+    data_db = cursor_stock().find({'key_cvm': key_cvm})
 
     # Build TTM List
     ttm_list = []
@@ -39,6 +39,7 @@ def build_indicadres(key_cvm):
                     'amount_stocks': None,
                     'lpa': None,
                     'vpa': None,
+                    'margem_brt': None,
                     'margem_ebit': None,
                     'margem_liq': None,
                     'roic': None,
@@ -59,7 +60,7 @@ def build_indicadres(key_cvm):
 
                     for x in range(0, 5):
                         try:
-                            page = requests.get(url, timeout=0.5)
+                            page = requests.get(url, timeout=3)
                             if page.status_code == 200:
                                 return page
 
@@ -67,9 +68,16 @@ def build_indicadres(key_cvm):
                             print(e)
 
                 tree = html.fromstring(make_reqeust(base_url).content)
-                amount_stocks = tree.xpath('//div[contains(@id, "divComposicaoCapitalSocial")]//td[contains(text(), "Total")]/following-sibling::td/text()')[0]
+                amount_stocks = tree.xpath(
+                    '//div[contains(@id, "divComposicaoCapitalSocial")]//td[contains(text(), "Total")]/following-sibling::td/text()')[
+                    0]
                 amount_stocks = int(str(amount_stocks).replace('.', ''))
 
+                # Get Resultado Brt
+                try:
+                    resultado_brt = stock.get('results').get(_year).get('ttm').get(_ttm_result).get('resultado_brt') * 1000
+                except:
+                    resultado_brt = None
 
                 # Get Lucro Liq
                 try:
@@ -158,6 +166,12 @@ def build_indicadres(key_cvm):
                 else:
                     ind_dict['vpa'] = None
 
+                # Margem BRT:
+                if resultado_brt and receita_liq is not None:
+                    ind_dict['margem_brt'] = float(f'{(resultado_brt / receita_liq) * 100:.2f}')
+                else:
+                    ind_dict['margem_brt'] = None
+
                 # Margem EBIT:
                 if ebit and receita_liq is not None:
                     ind_dict['margem_ebit'] = float(f'{(ebit / receita_liq) * 100:.2f}')
@@ -196,7 +210,7 @@ def build_indicadres(key_cvm):
 
                 # Ebitida:
                 if ebit and depreciacao_amortizao is not None:
-                    ind_dict['ebitda'] = int(f'{(ebit + abs(depreciacao_amortizao))/1000:.0f}')
+                    ind_dict['ebitda'] = int(f'{(ebit + abs(depreciacao_amortizao)) / 1000:.0f}')
                 else:
                     ind_dict['ebitda'] = None
 
@@ -207,7 +221,7 @@ def build_indicadres(key_cvm):
                 """ Save @ DB """
                 print(f'IND has created = {_ttm_result}')
                 # print(json.dumps(ind_dict, indent=4))
-                cursor().update_one(
+                cursor_stock().update_one(
                     {'key_cvm': key_cvm},
                     {'$set': {f'results.{_year}.ind.{_ttm_result}': ind_dict}}
                 )

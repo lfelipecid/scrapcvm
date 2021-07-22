@@ -1,19 +1,59 @@
 import json
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
+from spider.get_result import get_result
 
 
 def build_4th(key_cvm):
     # Load OUT DATA
-    stock_data = cursor().find_one({'key_cvm': key_cvm})
+    stock_data = cursor_stock().find_one({'key_cvm': key_cvm})
 
-    # Build 4th if need it:
+    """ Validation """
     for _year in stock_data.get('results'):
 
-        # Validation Process
-        check_itr = False
+        """ Validation DATA """
+        for _typ in stock_data.get('results').get(_year):
+
+            # Validate ITR:
+            if _typ == 'itr':
+                for _date in stock_data.get('results').get(_year).get(_typ):
+                    for _dr in stock_data.get('results').get(_year).get(_typ).get(_date):
+                        validate_itr = stock_data.get('results').get(_year).get(_typ).get(_date).get(_dr)
+                        if validate_itr is None:
+                            error = {
+                                'year': _year,
+                                'typ': _typ,
+                                'date': _date,
+                                'dr': _dr,
+                            }
+
+                            print(f'ERROR @ {error}')
+                            fix_error = get_result(key_cvm, error)
+                            print(fix_error)
+
+            # Validate DFP:
+            elif _typ == 'dfp':
+                for _dr in stock_data.get('results').get(_year).get(_typ):
+
+                    validate_dfp = stock_data.get('results').get(_year).get(_typ).get(_dr)
+                    if validate_dfp is None:
+                        error = {
+                            'year': _year,
+                            'typ': _typ,
+                            'date': None,
+                            'dr': _dr,
+                        }
+
+                        print(f'ERROR @ {error}')
+                        fix_error = get_result(key_cvm, error)
+                        print(fix_error)
+
         check_dfp = False
+        check_itr = False
+
+        # Validation Process
         for _typ in stock_data.get('results').get(_year):
             amount_qrtly = 0
+
             if _typ == 'itr':
                 for _date in stock_data.get('results').get(_year).get(_typ):
                     amount_qrtly += 1
@@ -137,7 +177,7 @@ def build_4th(key_cvm):
 
             # Save @ DB:
             # print(json.dumps(schema, indent=4))
-            cursor().update_one(
+            cursor_stock().update_one(
                 {'key_cvm': key_cvm},
                 {'$set': {f'results.{_year}.itr.12/{_year}': schema}}
             )

@@ -1,7 +1,7 @@
 from selenium import webdriver
 from spider.gathering_data import get_data
 from proxy.proxy import ProxyManager
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
 from spider.filters_cvm import filters_cvm
 from datetime import datetime as dt
 
@@ -18,12 +18,19 @@ def scrap_results(key_cvm):
 
     # Load Web-driver
     options = webdriver.ChromeOptions()
+
+    # Disable Browser
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+
+    # Proxy Settings
     options.add_argument(f'--proxy-server={client.proxy}')
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
+
     driver = webdriver.Chrome('./chromedriver', options=options)
 
     # Load OUT DATA:
-    stock_data = cursor().find_one({'key_cvm': key_cvm})
+    stock_data = cursor_stock().find_one({'key_cvm': key_cvm})
     nome_pregao = stock_data.get('nome_pregao')
 
     # Acess CVM & Filter:
@@ -116,14 +123,14 @@ def scrap_results(key_cvm):
         # Save DFP:
         if get_month == 12:
             print(f'\n\tCreated DFP = {get_year}')
-            cursor().update_one(
+            cursor_stock().update_one(
                 {'key_cvm': key_cvm},
                 {'$set': {f'results.{get_year}.dfp': result_dict}}
             )
         # Save ITR:
         else:
             print(f'\tCreated ITR = {get_month}/{get_year}')
-            cursor().update_one(
+            cursor_stock().update_one(
                 {'key_cvm': key_cvm},
                 {'$set': {f'results.{get_year}.itr.{get_month}/{get_year}': result_dict}}
             )

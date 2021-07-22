@@ -1,7 +1,7 @@
 from selenium import webdriver
 from spider.gathering_data import get_data
 from proxy.proxy import ProxyManager
-from db_process.connect_db import cursor
+from self_apps.connect_db import cursor_stock
 from spider.filters_cvm import filters_cvm
 from datetime import datetime as dt
 
@@ -26,7 +26,7 @@ def scrap_qrtly_results():
     driver = webdriver.Chrome('./chromedriver', options=options)
 
     # Load DB:
-    raw_db = cursor().find({})
+    raw_db = cursor_stock().find({})
     data_db = [x for x in raw_db]
 
     # Parse DATA DB x CVM and CREATE LIST:
@@ -131,7 +131,7 @@ def scrap_qrtly_results():
 
             # Save DFP
             if result_month == 12:
-                cursor().update_one(
+                cursor_stock().update_one(
                     {'key_cvm': key_cvm},
                     {'$set': {f'results.{result_year}.dfp': result_dict}},
                     upsert=True
@@ -139,7 +139,7 @@ def scrap_qrtly_results():
 
             # Save ITR
             else:
-                cursor().update_one(
+                cursor_stock().update_one(
                     {'key_cvm': key_cvm},
                     {'$set': {f'results.{result_year}.itr.{formated_qrtly}': result_dict}},
                     upsert=True
@@ -229,7 +229,7 @@ def scrap_qrtly_results():
                     schema['dre']['result_date'] = f'31/12/{_year}'
                     schema['dre']['result_sended'] = result_sended
 
-                    cursor().update_one(
+                    cursor_stock().update_one(
                         {'key_cvm': key_cvm},
                         {'$set': {f'results.{_year}.itr.12/{_year}': schema}}
                     )

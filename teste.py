@@ -1,16 +1,18 @@
-import requests
-from lxml import html
+# import yfinance as yf
+#
+# stock = yf.Ticker('AERI3.SA')
+#
+# stock = stock.info
+#
+# print(stock)
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36'
-}
 
-base = 'http://bvmf.bmfbovespa.com.br/pt-br/mercados/acoes/empresas/ExecutaAcaoConsultaInfoEmp.asp?CodCVM=25283'
-# base_url = f'http://bvmf.bmfbovespa.com.br/cias-listadas/empresas-listadas/ResumoEmpresaPrincipal.aspx?codigoCvm=25283&idioma=pt-br'
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
-page = requests.get(base, headers=headers)
-tree = page.content
-tree = html.fromstring(tree)
+options = Options()
+options.add_argument('--headless')
+options.add_argument('--disable-gpu')
 
-teste = tree.xpath('//div[contains(@id, "div1")]//h3/text()')[0]
-print(teste)
+driver = webdriver.Chrome('./chromedriver', options=options)
+driver.get('http://www.google.com')
